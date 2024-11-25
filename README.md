@@ -1,2 +1,2 @@
-# keepasscx-unlocker
+# keepassxc-unlocker
 KeePassXC Unlocker
