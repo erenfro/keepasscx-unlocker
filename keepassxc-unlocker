@@ -12,6 +12,9 @@ import os
 import psutil
 import threading
 import time
+import tempfile
+import shutil
+import subprocess
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -25,7 +28,6 @@ config_file = os.path.join(
     os.environ.get('XDG_CONFIG_HOME', os.path.expanduser('~/.config')),
     'keepassxc-unlockerrc'
 )
-
 
 def get_process_by_name(name):
     """
@@ -306,21 +308,6 @@ def remove(database):
         print(f"Failed to load configuration: {e}")
         #logging.error(f"Failed to load configuration: {e}")
 
-
-    #config = load_config()
-    #service_name = config['monitor']['service']
-    #try:
-    #    config = load_config()
-    #    if config is None:
-    #        logging.warning("No configuration found, skipping unlock.")
-    #        return
-    #
-    #    service_name = config['monitor']['service']
-    #
-    #except Exception as e:
-    #    print(f"Failed to load configuration: {e}")
-    #    #logging.error(f"Failed to load configuration: {e}")
-
     try:
         # Try to delete the entry from the keyring
         keyring.delete_password(service_name, database)
@@ -339,6 +326,81 @@ def remove(database):
         print("Removed database from configuration")
         #logging.info(f"Removed database configuration: {database}")
 
+def generate_systemd_unit(path):
+    """
+    Generates a systemd service unit file for the specified script.
+
+    Args:
+        path: The absolute path to the script.
+    """
+    with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+        f.write(f"""
+[Unit]
+Description=KeePassXC Unlocker Service
+
+[Service]
+Type=simple
+ExecStart={path} watch
+
+[Install]
+WantedBy=multi-user.target
+""")
+
+    return f.name
+
+def add_service():
+    """
+    Adds a user systemd service unit file and enables it.
+    """
+    script_path = os.path.abspath(sys.argv[0])
+    unit_file = generate_systemd_unit(script_path)
+    user_systemd_dir = os.path.join(
+        os.environ.get('XDG_CONFIG_HOME', os.path.expanduser('~/.config')),
+        'systemd', 'user'
+    )
+    dest_file = os.path.join(user_systemd_dir, "keepassxc-unlocker.service")
+
+    os.makedirs(user_systemd_dir, exist_ok=True)
+    shutil.move(unit_file, dest_file)
+
+    cmd = "systemctl --user daemon-reload"
+    subprocess.run(cmd, shell=True)
+    cmd = "systemctl --user enable --now keepassxc-unlocker.service"
+    subprocess.run(cmd, shell=True)
+    print("Service installed and running")
+
+def remove_service():
+    """
+    Removes the user systemd service unit file and disables it.
+    """
+    user_systemd_dir = os.path.join(
+        os.environ.get('XDG_CONFIG_HOME', os.path.expanduser('~/.config')),
+        'systemd', 'user'
+    )
+    dest_file = os.path.join(user_systemd_dir, "keepassxc-unlocker.service")
+    cmd = "systemctl --user disable --now keepassxc-unlocker.service"
+    subprocess.run(cmd, shell=True)
+    os.remove(dest_file)
+    cmd = "systemctl --user daemon-reload"
+    subprocess.run(cmd, shell=True)
+    print("Service stopped and removed")
+
+def status_service():
+    """
+    Shows systemd status if it's installed, or that it's not installed.
+    """
+    user_systemd_dir = os.path.join(
+        os.environ.get('XDG_CONFIG_HOME', os.path.expanduser('~/.config')),
+        'systemd', 'user'
+    )
+    dest_file = os.path.join(user_systemd_dir, "keepassxc-unlocker.service")
+
+    if os.path.isfile(dest_file):
+        cmd = "systemctl --user status keepassxc-unlocker.service"
+        subprocess.run(cmd, shell=True)
+    else:
+        print("Service is not installed")
+
 def help():
     """
     Prints the help message.
@@ -347,9 +409,15 @@ def help():
     print("Commands:")
     print("  add <db>      - Add an entry to the keyring")
     print("  remove <db>   - Remove an entry from the keyring")
+    print("  service <opt> - Add or Remove user service for automation")
     print("  unlock        - Unlock all KeePassXC databases from keyring")
     print("  watch         - Monitor screensaver lock/unlock events")
     print("  help          - Show this help message")
+    print(" ")
+    print("Service Options:")
+    print("  add           - Add systemd user service to automate unlock")
+    print("  remove        - Remove systemd user service and automation")
+    print("  status        - Status of service")
 
 def main():
     """
@@ -366,6 +434,17 @@ def main():
     elif command == "remove" and len(sys.argv) == 3:
         database = sys.argv[2]
         remove(database)
+    elif command == "service" and len(sys.argv) == 3:
+        if sys.argv[2] == "add":
+            add_service()
+        elif sys.argv[2] == "remove":
+            remove_service()
+        elif sys.argv[2] == "status":
+            status_service()
+        else:
+            print(f"Unknown or invalid service option: {sys.argv[2]}")
+            help()
+            sys.exit(1)
     elif command == "unlock":
         unlock()
     elif command == "watch":
