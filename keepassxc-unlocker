@@ -341,9 +341,10 @@ Description=KeePassXC Unlocker Service
 [Service]
 Type=simple
 ExecStart={path} watch
+Restart=on-failure
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=graphical-session.target
 """)
 
     return f.name
