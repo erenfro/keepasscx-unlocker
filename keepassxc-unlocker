@@ -109,26 +109,41 @@ def watch():
     ]
 
     found_interface = False
-    for interface, path in interfaces_to_monitor:
-        try:
-            proxy = session_bus.get_object(interface, path)
-            iface = dbus.Interface(proxy, dbus_interface=interface)
+    tries = 0
 
-            session_bus.add_signal_receiver(
-                on_signal_received,
-                dbus_interface=interface,
-                signal_name="ActiveChanged",
-            )
-            logging.info(f"Subscribed to {interface} at {path}")
-            found_interface = True
-        except dbus.exceptions.DBusException as e:
-            pass
-            #logging.warning(f"Could not subscribe to {interface} at {path}: {e}")
+    while tries < 5 and found_interface == False:
+        tries += 1
+        logging.info("Initializing D-Bus session interface monitor...")
+        for interface, path in interfaces_to_monitor:
+            try:
+                proxy = session_bus.get_object(interface, path)
+                iface = dbus.Interface(proxy, dbus_interface=interface)
 
-    if not found_interface:
-        logging.error("No suitable interfaces were found. Exiting...")
-        return
+                session_bus.add_signal_receiver(
+                    on_signal_received,
+                    dbus_interface=interface,
+                    signal_name="ActiveChanged",
+                )
+                logging.info(f"Subscribed to {interface} at {path}")
+                found_interface = True
+                break
+            except KeyboardInterrupt:
+                print("Exiting by user interupt.")
+                sys.exit(0)
+            except dbus.exceptions.DBusException as e:
+                pass
+                #logging.warning(f"Could not subscribe to {interface} at {path}: {e}")
 
+        if not found_interface:
+            if tries < 5:
+                try:
+                    time.sleep(5)
+                except KeyboardInterrupt:
+                    print("Exiting by user interupt.")
+                    sys.exit(0)
+            else:
+                logging.error("No suitable interfaces were found. Exiting...")
+                sys.exit(2)
 
     # Start the process monitoring thread
     monitor_thread = threading.Thread(target=monitor_process, args=(process_name,))
