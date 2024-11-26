@@ -405,7 +405,7 @@ def help():
     """
     Prints the help message.
     """
-    print("Usage: python script.py <command> [arguments]")
+    print("Usage: keepassxc-unlocker <command> [arguments]")
     print("Commands:")
     print("  add <db>      - Add an entry to the keyring")
     print("  remove <db>   - Remove an entry from the keyring")
